@@ -146,9 +146,10 @@ sub refineList {
         if ($itemName =~ /\+?(\d+)?\s*([A-Za-z\s]+(?:\[\d*\])?)/) {
             if (($1 < $refineAmount) && ($2 eq $weapon)) {
                 Commands::run("refine $refineID");
-                sleep(0.1);
+                #sleep(0.1);
                 $weaponSetStatus = TRUE;
                 startRefine();
+                last;
             }
         }
         #message(sprintf("Refine ID: %s, Name: %s, Item ID: %s\n", $refineID, $itemName, $itemID), "list");
@@ -169,7 +170,7 @@ sub refineMain {
         message "$refineAmount\n", 'success';
 
         Commands::run("ss 477 10");
-        sleep(0.1);
+        #sleep(0.1);
         $refiningStatus = FALSE;
     }
 }
