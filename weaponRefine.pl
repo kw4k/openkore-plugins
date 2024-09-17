@@ -95,7 +95,7 @@ sub setWeapon {
 
     message "Available weapons to be refined:\n\tItemID\tWeapon\n", "system";
     foreach my $equip (@{$char->inventory->getItems}) {
-        if ($equip->name =~ /\+?(\d+)?\s*([A-Za-z\s]+(?:\[\d*\])?)/) {
+        if ($equip->name =~ /\+?(\d+)?\s*([A-Za-z\s\-]+(?:\[\d*\])?)/) {
             if ($2 eq $weapon) {
                 message "\t[$equip->{binID}]\t$equip\n", "success";
                 $weaponSetStatus = TRUE if !$weaponSetStatus;
@@ -143,7 +143,7 @@ sub refineList {
     foreach my $weaponData (@upgradeList) {
         my ($refineID, $itemName, $itemID) = @$weaponData;
         
-        if ($itemName =~ /\+?(\d+)?\s*([A-Za-z\s]+(?:\[\d*\])?)/) {
+        if ($itemName =~ /\+?(\d+)?\s*([A-Za-z\s\-]+(?:\[\d*\])?)/) {
             if (($1 < $refineAmount) && ($2 eq $weapon)) {
                 Commands::run("refine $refineID");
                 #sleep(0.1);
