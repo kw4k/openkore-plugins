@@ -2,8 +2,9 @@ package weaponRefine;
 #   weaponRefine - Whitesmith Weapon Refining plugin by Isora/kw4k
 #   https://github.com/kw4k/openkore-plugins
 #
-# look for the subroutine 'upgrade_list' in src\Network\Receive.pm
-# look and add the following:
+#   IMPORTANT:
+#   - search the subroutine 'upgrade_list' in src\Network\Receive.pm
+#   - look and add the following:
 #   look for -> my $msg;
 #   add below it -> my @upgradeList;
 #
@@ -15,25 +16,30 @@ package weaponRefine;
 #		upgrade_list => \@upgradeList,
 #	});
 #
-#   TODO:
-#       - work on ss 477
-#       - work on selective refining
-#       - check other TODOs
+#   TODO/FIXME:
+#   - cleaner loop
+#   - fix weapon upgrade fail breaking a subroutine. apparently, [done]
+#   - add filter for inventory_item_removed hook
+
+
 
 use strict;
 use Plugins;
-use Log qw(message error);
+use Log qw(message error debug);
 use Utils;
 use Actor;
 use AI;
 use Globals;
-use Skill;
 use Network;
+use Network::Send;
 use Misc;
 
 use constant {
     TRUE => 1,
     FALSE => 0,
+    REFINESTART => 2,
+    REFINESELECT => 3,
+    IDLE => 4,
 };
 
 Plugins::register("weaponRefine", "weaponRefine - Whitesmith weapon refine plugin. ", \&onUnload, \&onReload);
@@ -41,6 +47,7 @@ Plugins::register("weaponRefine", "weaponRefine - Whitesmith weapon refine plugi
 my $hooks = Plugins::addHooks(
     ["upgrade_list", \&refineList, undef],
     ["AI_pre", \&refineMain, undef],
+    ["inventory_item_removed", \&itemRemoved, undef],
 );
 
 my $commands = Commands::register(
@@ -49,7 +56,8 @@ my $commands = Commands::register(
     ['setRefine', 'sets the weapon refine limit', \&setRefineAmount],
     ['startRefine', 'start the refining process', \&startRefine],
     ['stopRefine', 'stops the refining process', \&stopRefine],
-    ['test', 'test', \&testSkillUse],
+    #['test', 'test', \&testSkillUse],
+    ['test', 'test', \&testRegex],
 );
 
 message "weaponRefine loaded!\n\n", "success";
@@ -57,15 +65,23 @@ commandHelp();
 
 # variables
 our $weapon;
+our $weaponInInventory = FALSE;
+our $weaponlist;
 our $weaponSetStatus = FALSE;
 our $refineAmount;
 our $refiningStatus = FALSE;
+our $actionState = IDLE;
+
+# i'll put regex here so it's easier to update
+#our $weaponMatch = qr/\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[\d*\])?)/;
+our $weaponMatch =  qr/\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[[A-za-z]*\d*\])?)/;
 
 sub onUnload {
     Plugins::delHooks($hooks);
     Commands::unregister($commands);
     $weapon = undef;
     $refineAmount = undef;
+    $weaponlist = undef;
     message "weaponRefine plugin unloaded.\n", 'success';
 }
 
@@ -75,6 +91,13 @@ sub onReload {
 
 sub testSkillUse {
     Commands::run("ss 477 10");
+}
+
+sub testRegex {
+    my ($arg) = @_[1];
+    if ($arg =~ $weaponMatch) {
+        debug "Yeah it works.\n"
+    }
 }
 
 sub commandHelp {
@@ -90,16 +113,60 @@ sub commandHelp {
 }
 
 sub setWeapon {
-    # TODO: make kore check cart and storage for weapons
-    our ($weapon) = @_[1];
+    # TODO: 
+    #   - make kore check cart and storage for weapons
+    #   - reset setRefine when setting new weapon [done]
+    # FIXME:
+    #   - this whole setWeapon stuff. when setWeapon takes no argument, 
+    #   i want it to display the current weaponlist and weapon if it has data in it,
+    #   and an error if there's nothing. just purely aesthetic.
+    #   
+    my ($arg) = @_[1];
+    $refineAmount = undef;
 
-    message "Available weapons to be refined:\n\tItemID\tWeapon\n", "system";
+    if (!$arg) {
+        if ($weapon && $weaponlist && ($weaponInInventory ne FALSE)) {
+            message "\tThe current weapon(s) available for refinement: ", "system";
+            message "$weapon\n", "success";
+            debug "$weaponSetStatus\n";
+        } else {
+            debug "Fail1\n";
+            error "\tPlease set a weapon to be refined\n";
+        }
+    } else {
+        findAndSetWeapon($arg);
+        if (($weaponInInventory eq TRUE) && ($arg eq $weapon)) {
+            message "Available weapons to be refined:\n\tItemID\tWeapon\n", "system";
+            message $weaponlist, "success";
+            $weaponSetStatus = TRUE;
+            debug "$weaponSetStatus\n";
+        } else {
+            debug "Fail2\n";
+            debug "$weapon\n";
+            message "\tWeapon not found\n", "drop";
+            undef $weaponInInventory;
+        }
+    }
+
+}
+
+sub findAndSetWeapon {
+    # TODO/FIXME:
+    #   - yeah might change this but it works for now. 
+    my ($arg) = @_;
+    undef $weaponlist;
     foreach my $equip (@{$char->inventory->getItems}) {
-        if ($equip->name =~ /\+?(\d+)?\s*([A-Za-z\s\-]+(?:\[\d*\])?)/) {
-            if ($2 eq $weapon) {
-                message "\t[$equip->{binID}]\t$equip\n", "success";
+        if ($equip->name =~ /\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[\d*\])?)/) {
+            if ($2 eq $arg) {
+                $weaponlist .= "\t[$equip->{binID}]\t$equip\n";
+                $weapon = $arg;
+                $weaponInInventory = TRUE if !$weaponInInventory;
                 $weaponSetStatus = TRUE if !$weaponSetStatus;
             }
+        } else {
+            $weaponInInventory = FALSE if !$weaponInInventory;
+            $weaponSetStatus = FALSE;
+            last;
         }
     }
 }
@@ -120,6 +187,7 @@ sub startRefine {
     if (($weaponSetStatus eq TRUE) && ($refineAmount)) {
         message "Weapon Refining start!\n", "success";
         $refiningStatus = TRUE;
+        $actionState = REFINESTART;
     } else {
         error "Please check your setWeapon and/or setRefine.\n";
     }
@@ -127,52 +195,49 @@ sub startRefine {
 
 sub stopRefine {
     $refiningStatus = FALSE;
+    $actionState = IDLE;
     message "Weapon Refining stopped.\n", "drop";
 }
 
-sub refineList {
-    # TODO:
-    #   - parse refineID based on setWeapon and/or binID/itemID
-    #   - track refine levels based on setRefine
-    #   - make sure that it refines the right weapon (name and refine levels)
-    my ($self, $args) = @_;
+sub itemRemoved {
+    # TODO: add filter for items currently being refined to avoid triggering unrelated
+    #   inventory_item_removed hooks.
+    $actionState = REFINESTART;
+}
 
+sub refineList {
+    # FIXME: 
+    #   - program breaks when weapon gets destroyed due to failed upgrade [done]
+    my ($self, $args) = @_;
     my $refine_list = $args->{upgrade_list};
     my @upgradeList = @$refine_list;
-
+    $actionState = REFINESELECT;
+    debug "I am at refineList!\n";
     foreach my $weaponData (@upgradeList) {
         my ($refineID, $itemName, $itemID) = @$weaponData;
-        
-        if ($itemName =~ /\+?(\d+)?\s*([A-Za-z\s\-]+(?:\[\d*\])?)/) {
+        if (($itemName =~ /\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[\d*\])?)/) && ($actionState eq REFINESELECT) && ($refiningStatus eq TRUE)) {
+            debug "$itemName\n";
             if (($1 < $refineAmount) && ($2 eq $weapon)) {
-                Commands::run("refine $refineID");
+                debug "weapon $weapon is refined to $1\n";
+                $messageSender->sendWeaponRefine($refineList->[$refineID]);
+                $actionState = REFINESTART;
                 #sleep(0.1);
-                $weaponSetStatus = TRUE;
-                startRefine();
-                last;
+                #last;
             }
         }
-        #message(sprintf("Refine ID: %s, Name: %s, Item ID: %s\n", $refineID, $itemName, $itemID), "list");
     }
 }
 
 sub refineMain {
-    if ($refiningStatus eq TRUE) {
-        # TODO:
-        #   - main refine stuff
-        #   - get refine stones from storage or npc
-        #   - log successful attempt (beyond safe limits only)
-        #   - humanlike refining aka spamming
-        #   - make it work like with refineEquip macro. I like that one.
+    while (($refiningStatus eq TRUE) && ($actionState eq REFINESTART)) {
         message "Refining ", 'system';
         message "$weapon ", 'success';
         message "up to +", 'system';
         message "$refineAmount\n", 'success';
 
-        Commands::run("ss 477 10");
+        $messageSender->sendSkillUse(477, $char->{skills}{WS_WEAPONREFINE}{lv}, $accountID);
+        $actionState = REFINESELECT;
         #sleep(0.1);
-        $refiningStatus = FALSE;
     }
 }
-
 1;
