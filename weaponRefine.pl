@@ -34,12 +34,16 @@ use Network;
 use Network::Send;
 use Misc;
 
+use Time::HiRes;
+
 use constant {
     TRUE => 1,
     FALSE => 0,
     REFINESTART => 2,
     REFINESELECT => 3,
     IDLE => 4,
+    REFINE_DELAY => 0.1,
+    REFINE_DELAY2 => 1,
 };
 
 Plugins::register("weaponRefine", "weaponRefine - Whitesmith weapon refine plugin. ", \&onUnload, \&onReload);
@@ -71,6 +75,7 @@ our $weaponSetStatus = FALSE;
 our $refineAmount;
 our $refiningStatus = FALSE;
 our $actionState = IDLE;
+my $common_time;
 
 # i'll put regex here so it's easier to update
 #our $weaponMatch = qr/\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[\d*\])?)/;
@@ -116,11 +121,6 @@ sub setWeapon {
     # TODO: 
     #   - make kore check cart and storage for weapons
     #   - reset setRefine when setting new weapon [done]
-    # FIXME:
-    #   - this whole setWeapon stuff. when setWeapon takes no argument, 
-    #   i want it to display the current weaponlist and weapon if it has data in it,
-    #   and an error if there's nothing. just purely aesthetic.
-    #   
     my ($arg) = @_[1];
     $refineAmount = undef;
 
@@ -172,8 +172,6 @@ sub findAndSetWeapon {
 }
 
 sub setRefineAmount {
-    # TODO: determine weapon safe refine limit for each weapon level (1-4)
-    # use the one I used for refineEquip macro
     our ($refineAmount) = @_[1];
 
     if ($refineAmount =~ /^\d+$/ && $refineAmount >= 1 && $refineAmount <= 10) {
@@ -200,19 +198,16 @@ sub stopRefine {
 }
 
 sub itemRemoved {
-    # TODO: add filter for items currently being refined to avoid triggering unrelated
-    #   inventory_item_removed hooks.
     $actionState = REFINESTART;
 }
 
 sub refineList {
-    # FIXME: 
-    #   - program breaks when weapon gets destroyed due to failed upgrade [done]
     my ($self, $args) = @_;
     my $refine_list = $args->{upgrade_list};
     my @upgradeList = @$refine_list;
     $actionState = REFINESELECT;
     debug "I am at refineList!\n";
+    $common_time = time;
     foreach my $weaponData (@upgradeList) {
         my ($refineID, $itemName, $itemID) = @$weaponData;
         if (($itemName =~ /\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[\d*\])?)/) && ($actionState eq REFINESELECT) && ($refiningStatus eq TRUE)) {
@@ -221,15 +216,14 @@ sub refineList {
                 debug "weapon $weapon is refined to $1\n";
                 $messageSender->sendWeaponRefine($refineList->[$refineID]);
                 $actionState = REFINESTART;
-                #sleep(0.1);
-                #last;
             }
         }
     }
 }
 
 sub refineMain {
-    while (($refiningStatus eq TRUE) && ($actionState eq REFINESTART)) {
+    while ((timeOut($common_time, REFINE_DELAY)) && ($refiningStatus eq TRUE) && ($actionState eq REFINESTART)) {
+        $common_time = time;
         message "Refining ", 'system';
         message "$weapon ", 'success';
         message "up to +", 'system';
@@ -237,7 +231,6 @@ sub refineMain {
 
         $messageSender->sendSkillUse(477, $char->{skills}{WS_WEAPONREFINE}{lv}, $accountID);
         $actionState = REFINESELECT;
-        #sleep(0.1);
     }
 }
 1;
