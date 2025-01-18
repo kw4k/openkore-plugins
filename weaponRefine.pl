@@ -156,7 +156,7 @@ sub findAndSetWeapon {
     my ($arg) = @_;
     undef $weaponlist;
     foreach my $equip (@{$char->inventory->getItems}) {
-        if ($equip->name =~ /\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[\d*\])?)/) {
+        if ($equip->name =~ $weaponMatch) {
             if ($2 eq $arg) {
                 $weaponlist .= "\t[$equip->{binID}]\t$equip\n";
                 $weapon = $arg;
@@ -210,7 +210,7 @@ sub refineList {
     $common_time = time;
     foreach my $weaponData (@upgradeList) {
         my ($refineID, $itemName, $itemID) = @$weaponData;
-        if (($itemName =~ /\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[\d*\])?)/) && ($actionState eq REFINESELECT) && ($refiningStatus eq TRUE)) {
+        if (($itemName =~ $weaponMatch) && ($actionState eq REFINESELECT) && ($refiningStatus eq TRUE)) {
             debug "$itemName\n";
             if (($1 < $refineAmount) && ($2 eq $weapon)) {
                 debug "weapon $weapon is refined to $1\n";
