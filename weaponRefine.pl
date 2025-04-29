@@ -16,6 +16,11 @@ package weaponRefine;
 #		upgrade_list => \@upgradeList,
 #	});
 #
+#   - packet length fix by @mrsoap
+#   - on the same subroutine (upgrade_list), change 13 to 23
+#   - this line here -> for (my $i = 0; $i < length($args->{item_list}); $i += 13) {
+#   - and this -> my ($index, $nameID) = unpack('a2 x6 C', substr($args->{item_list}, $i, 13));
+#
 #   TODO/FIXME:
 #   - cleaner loop
 #   - fix weapon upgrade fail breaking a subroutine. apparently, [done]
