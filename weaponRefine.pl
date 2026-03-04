@@ -84,7 +84,7 @@ my $common_time;
 
 # i'll put regex here so it's easier to update
 #our $weaponMatch = qr/\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[\d*\])?)/;
-our $weaponMatch =  qr/\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[[A-za-z]*\d*\])?)/;
+our $weaponMatch =  qr/\+?(\d+)?\s*([A-Za-z\s\-\']+(?:\[[A-Za-z]*\d*\])?)/;
 
 sub onUnload {
     Plugins::delHooks($hooks);
@@ -130,7 +130,7 @@ sub setWeapon {
     $refineAmount = undef;
 
     if (!$arg) {
-        if ($weapon && $weaponlist && ($weaponInInventory ne FALSE)) {
+        if ($weapon && $weaponlist && ($weaponInInventory != FALSE)) {
             message "\tThe current weapon(s) available for refinement: ", "system";
             message "$weapon\n", "success";
             debug "$weaponSetStatus\n";
@@ -140,7 +140,7 @@ sub setWeapon {
         }
     } else {
         findAndSetWeapon($arg);
-        if (($weaponInInventory eq TRUE) && ($arg eq $weapon)) {
+        if (($weaponInInventory == TRUE) && ($arg eq $weapon)) {
             message "Available weapons to be refined:\n\tItemID\tWeapon\n", "system";
             message $weaponlist, "success";
             $weaponSetStatus = TRUE;
@@ -149,7 +149,7 @@ sub setWeapon {
             debug "Fail2\n";
             debug "$weapon\n";
             message "\tWeapon not found\n", "drop";
-            undef $weaponInInventory;
+            $weaponInInventory = FALSE;
         }
     }
 
@@ -160,6 +160,9 @@ sub findAndSetWeapon {
     #   - yeah might change this but it works for now. 
     my ($arg) = @_;
     undef $weaponlist;
+    $weaponInInventory = FALSE;
+    $weaponSetStatus = FALSE;
+
     foreach my $equip (@{$char->inventory->getItems}) {
         if ($equip->name =~ $weaponMatch) {
             if ($2 eq $arg) {
@@ -168,16 +171,14 @@ sub findAndSetWeapon {
                 $weaponInInventory = TRUE if !$weaponInInventory;
                 $weaponSetStatus = TRUE if !$weaponSetStatus;
             }
-        } else {
-            $weaponInInventory = FALSE if !$weaponInInventory;
-            $weaponSetStatus = FALSE;
-            last;
         }
     }
 }
 
 sub setRefineAmount {
-    our ($refineAmount) = @_[1];
+    my ($arg) = @_[1];
+
+    $refineAmount = $arg;
 
     if ($refineAmount =~ /^\d+$/ && $refineAmount >= 1 && $refineAmount <= 10) {
         message "Refine Limit set to: +$refineAmount.\n", "success";
@@ -187,7 +188,7 @@ sub setRefineAmount {
 }
 
 sub startRefine {
-    if (($weaponSetStatus eq TRUE) && ($refineAmount)) {
+    if (($weaponSetStatus == TRUE) && ($refineAmount)) {
         message "Weapon Refining start!\n", "success";
         $refiningStatus = TRUE;
         $actionState = REFINESTART;
@@ -215,7 +216,7 @@ sub refineList {
     $common_time = time;
     foreach my $weaponData (@upgradeList) {
         my ($refineID, $itemName, $itemID) = @$weaponData;
-        if (($itemName =~ $weaponMatch) && ($actionState eq REFINESELECT) && ($refiningStatus eq TRUE)) {
+        if (($itemName =~ $weaponMatch) && ($actionState == REFINESELECT) && ($refiningStatus == TRUE)) {
             debug "$itemName\n";
             if (($1 < $refineAmount) && ($2 eq $weapon)) {
                 debug "weapon $weapon is refined to $1\n";
@@ -227,7 +228,7 @@ sub refineList {
 }
 
 sub refineMain {
-    while ((timeOut($common_time, REFINE_DELAY)) && ($refiningStatus eq TRUE) && ($actionState eq REFINESTART)) {
+    while ((timeOut($common_time, REFINE_DELAY)) && ($refiningStatus == TRUE) && ($actionState == REFINESTART)) {
         $common_time = time;
         message "Refining ", 'system';
         message "$weapon ", 'success';
